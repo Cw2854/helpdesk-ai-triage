@@ -1,0 +1,12 @@
+# Secrets - never commit these
+.env
+
+# Python clutter
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Mac / Windows clutter
+.DS_Store
+Thumbs.db
