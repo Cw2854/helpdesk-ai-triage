@@ -4,6 +4,8 @@ A Python tool that reads incoming IT support tickets and uses AI to **categorise
 
 Built to show how a 1st line service desk could cut the time spent sorting the queue, without handing decisions over to AI blindly.
 
+**Live demo:** [Requests (employee form)](https://YOURUSERNAME.pythonanywhere.com/requests) · [Admin login](https://YOURUSERNAME.pythonanywhere.com/admin)
+
 **The results table in Excel** (most urgent first, with the issue and suggested fix side by side):
 
 <img width="962" height="349" alt="Excel results table showing priority, category, issue, suggested fix and draft reply" src="https://github.com/user-attachments/assets/f8729873-058e-4fbd-921a-3e0f25e488e7" />
@@ -98,6 +100,92 @@ python triage.py my_tickets.csv -o my_results.xlsx
 
 Only use made-up or anonymised data. Never use real people's tickets.
 
+## Admin web app (in progress)
+
+A small web app where the service desk admin signs in to see the ticket queue, built with Flask (Python), HTML, CSS and a little JavaScript. It's branded as **Brightmoor IT Desk Portal**, a made-up company, so it looks like a real internal tool. The name is one setting at the top of `app.py`.
+
+**Step 1, done: a secure sign-in page.** Security built in:
+
+- **Passwords are never stored.** `set_password.py` saves only a salted hash, so even someone reading the settings file can't see the password.
+- **Account lockout.** 5 wrong attempts locks sign-in for 5 minutes, like a real lockout policy.
+- **CSRF protection.** Every form carries a secret token, so another website can't submit it on the admin's behalf.
+- **Session safety.** The sign-in cookie can't be read by page scripts, the admin is signed out after 30 minutes without activity, and signed-in pages are never cached, so "Back" after signing out shows nothing.
+- **Locked-down pages.** Security headers block the page being framed by other sites or loading scripts from elsewhere, and the app only listens on this computer.
+
+Friendly touches: show/hide password, a Caps Lock warning, a "Signing in…" state and a live lockout countdown.
+
+To run it:
+
+```
+pip install -r requirements.txt
+python set_password.py     # once: choose the admin username and password
+python app.py              # then open http://127.0.0.1:5000/admin
+```
+
+The employee form is at http://127.0.0.1:5000/requests.
+
+**Step 2, done: the ticket queue.** Once signed in, the admin sees every ticket from the latest `triaged_tickets.xlsx`, most urgent first. It's read-only for now:
+
+- Filter by priority (P1–P4) or show only tickets that need human review
+- Search across ticket number, issue, category, name and message
+- Sort by urgency, newest or oldest
+- Click a ticket to see the suggested fix, draft reply, original message, the AI's confidence and reasoning, and whether it matched the expected answer
+
+Ticket text is untrusted input, so it's always displayed as plain text and can never run as code in the page.
+
+**Step 3, done: employees can report problems.** A **Requests** page (`/requests`) lets any employee send a ticket without signing in. As soon as it's sent:
+
+1. The AI triages it (category, priority, issue summary, suggested fix and draft reply)
+2. It's saved to a small SQLite database (`tickets.db`) with the next ticket number
+3. The employee gets their ticket number straight away
+4. Within 30 seconds, the admin's queue shows a "new ticket has arrived" message
+
+Design choices:
+
+- **No ticket is ever lost.** If the AI is unavailable, the ticket is still saved and flagged for a person to triage by hand.
+- **A database instead of the Excel file.** Saving to Excel fails while the file is open, and two tickets arriving together could overwrite each other. SQLite comes with Python and handles both. The admin can still **Download as Excel** at any time.
+- **Rate limited.** Each computer can send 5 tickets per 10 minutes, so nobody can flood the queue or use up the free AI quota.
+- **Safe with untrusted text.** Tickets are stored using parameterised SQL (no SQL injection) and always displayed as plain text (no cross-site scripting).
+- **The employee never sees the AI's draft reply.** It's for the analyst to check and send, so a person stays in control.
+- **The 30-minute sign-out still works.** The queue's background check for new tickets doesn't count as admin activity.
+
+When the app starts, it copies in any tickets from your latest `triaged_tickets.xlsx`, skipping ones it already has. `tickets.db` contains people's names and messages, so it's in `.gitignore` and never goes to GitHub.
+
+**Step 4, done: completing, deleting and restoring tickets.** The queue has three lists: **Open**, **Completed** and **Deleted**.
+
+- Open a ticket to **Mark as completed** or **Delete** it. Both show an **Undo** straight away.
+- Completed tickets can be **reopened**; deleted tickets can be **restored** at any time from the Deleted list.
+- Each list shows who completed or deleted a ticket and when, and **Download as Excel** exports the list you're looking at.
+
+To clear tickets out for good, use **Delete permanently** on a ticket in the Deleted list, or **Empty the Deleted list**. Both show a confirmation page first, only work on tickets already in the Deleted list, and shrink `tickets.db` afterwards. A permanently deleted ticket's name, email and message are gone for good (useful for UK GDPR erasure requests). Only its ticket number is kept, so it isn't copied back in from Excel and the number is never reused.
+
+Until then, nothing is wiped from the database ("soft delete"). That means every action can be undone, there's a record of who did what, ticket numbers are never reused, and a deleted ticket isn't copied back in from the Excel results when the app restarts. All actions are POST requests protected by the CSRF token, so a link or another website can't trigger them.
+
+**Next step:** let employees email tickets in, using the same database and AI triage.
+
+Flask's built-in server is only for running on your own computer. Online, PythonAnywhere runs the app behind its own web server with HTTPS (see below).
+
+## Putting it online (free, on PythonAnywhere)
+
+The portal runs online on a free PythonAnywhere account, at `https://YOURUSERNAME.pythonanywhere.com`:
+
+| Address | Page |
+|---|---|
+| `/requests` | **Brightmoor IT Desk Portal - Requests**: the employee form (the home page goes here too) |
+| `/admin` | **Brightmoor IT - Admin Login** |
+| `/admin/tickets` | **Brightmoor IT Desk Portal - Admin Manager**: the ticket queue |
+
+PythonAnywhere was chosen because its free plan keeps files between restarts (so `tickets.db` survives) and allows connections to the Groq API.
+
+Extra protections switch on when `.env` contains `PUBLIC_SITE=1`:
+
+- **HTTPS only:** the sign-in cookie is never sent over plain HTTP, and browsers are told to always use HTTPS (HSTS).
+- **Real visitor addresses:** online, every request arrives through PythonAnywhere's load balancer. The app reads each visitor's real IP from the `X-Real-IP` header, so one person's failed logins can't lock everyone out.
+- **Spam protection on the form:** a hidden spam-trap field, 5 tickets per visitor per 10 minutes, and a cap of 30 tickets an hour for the whole site, to protect the free AI quota.
+- **A clear demo notice** on every page, so nobody mistakes Brightmoor IT for a real company or enters real personal data.
+
+`pythonanywhere_wsgi.py` shows what goes in PythonAnywhere's WSGI configuration file. Free web apps must be renewed once a month from the Web tab.
+
 ## Ideas for version 2
 
 - [ ] Read tickets straight from a Gmail inbox or a Google Form
@@ -109,4 +197,4 @@ Only use made-up or anonymised data. Never use real people's tickets.
 
 ## Tech
 
-Python · OpenAI-compatible chat API · Groq (`openai/gpt-oss-20b`) or Ollama (`llama3.2`) · prompt engineering · JSON output validation · Excel output with openpyxl
+Python · Flask · SQLite · HTML, CSS & JavaScript · OpenAI-compatible chat API · Groq (`openai/gpt-oss-20b`) or Ollama (`llama3.2`) · prompt engineering · JSON output validation · Excel output with openpyxl

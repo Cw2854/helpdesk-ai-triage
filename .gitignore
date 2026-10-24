@@ -10,3 +10,9 @@ venv/
 # Mac / Windows clutter
 .DS_Store
 Thumbs.db
+
+# Ticket database: contains people's names and messages
+tickets.db
+
+# Excel's temporary lock files
+~$*.xlsx
