@@ -4,6 +4,12 @@ A Python tool that reads incoming IT support tickets and uses AI to **categorise
 
 Built to show how a 1st line service desk could cut the time spent sorting the queue, without handing decisions over to AI blindly.
 
+https://github.com/user-attachments/assets/32670a83-f153-48ae-92c4-78bdf7866704
+<img width="1366" height="800" alt="brand_login" src="https://github.com/user-attachments/assets/6ceb69d0-fdb4-4e12-9155-1fdba169386b" />
+<img width="2000" height="2000" alt="Blue Modern Technology Company Logo" src="https://github.com/user-attachments/assets/159bbd7b-00bc-4562-a650-ca750169f8c1" />
+
+
+
 **Live demo:** [Requests (employee form)](https://YOURUSERNAME.pythonanywhere.com/requests) · [Admin login](https://YOURUSERNAME.pythonanywhere.com/admin)
 
 **The results table in Excel** (most urgent first, with the issue and suggested fix side by side):
