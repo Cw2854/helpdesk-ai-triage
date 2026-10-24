@@ -19,7 +19,7 @@ Built to show how a 1st line service desk could cut the time spent sorting the q
 
 ## Why I built it
 
-I've spent six years in customer-facing roles and troubleshoot computers and devices in my own time. On a service desk, the first few minutes of every ticket go on reading it, working out what it is and how urgent it is, and acknowledging it. I wanted to see how much of that triage AI could take on, and where a person still needs to stay in control. In short the AI is not perfect but the need for human assistance is paramount in order to increase accuracy and to obtain true results going forward.
+I've spent six years in customer-facing roles and troubleshooting computers and devices in my own time. On a service desk, the first few minutes of every ticket go on reading it, working out what it is and how urgent it is, and acknowledging it. I wanted to see how much of that triage AI could take on, and where a person still needs to stay in control. In short, the AI is not perfect, but the need for human assistance is paramount in order to increase accuracy and to obtain true results going forward. So far, the AI is a useful first pass, but a person still needs to check its work, especially on priority.
 
 ## What it does
 
