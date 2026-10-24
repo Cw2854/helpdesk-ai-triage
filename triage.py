@@ -48,6 +48,7 @@ CATEGORIES = [
     "Software",
     "Network / Connectivity",
     "Email",
+  "Mobile Device",
     "Printing",
     "Security / Phishing",
     "Starter / Leaver",
