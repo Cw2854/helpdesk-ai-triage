@@ -65,6 +65,7 @@ The AI was good at working out what a ticket was about but too relaxed about urg
 ## Design decisions
 
 - **The AI gathers the facts; rules decide the priority.** The AI was good at understanding tickets but too relaxed about urgency. Now it records the facts (how many people are affected, whether they can work, any deadline, any security risk) and `decide_priority()` turns them into P1–P4 using the ITIL impact × urgency approach. Every priority can be explained, and if the AI itself thought a ticket was more urgent than the rules did, it's flagged for a person.
+- **Corrections are visible and measured.** The admin queue marks every ticket where the rules changed the AI's own priority (↑ raised or ↓ lowered), with a "Corrected by rules" filter. `triage.py` reports how many corrections fixed a mistake or caused one, and how the AI would have scored on its own.
 - **Human in the loop.** P1s, security incidents and anything below 70% confidence are always flagged for a person to check. The AI drafts and a human decides.
 - **Never trust the AI's output blindly.** Every answer is checked: the category must come from the approved list, the priority must be P1–P4, and replies that ask for a password are flagged.
 - **Prompt-injection aware.** Ticket text is treated as data, not instructions. Sample ticket INC-1015 deliberately tries to trick the AI into marking a sticky mouse wheel as P1.
@@ -124,7 +125,7 @@ A small web app where the service desk admin signs in to see the ticket queue, b
 - **Account lockout.** 5 wrong attempts locks sign-in for 5 minutes, like a real lockout policy.
 - **Usernames ignore capitals, passwords don't.** "Admin" and "admin" are the same user, like Windows and Active Directory logins, but the password must match exactly.
 - **CSRF protection.** Every form carries a secret token, so another website can't submit it on the admin's behalf.
-- **Session safety.** The sign-in cookie can't be read by page scripts, the admin is signed out after 30 minutes without activity or when the browser closes, and signed-in pages are never cached, so "Back" after signing out shows nothing.
+- **Session safety.** The sign-in cookie can't be read by page scripts, the admin is signed out after 30 minutes without activity, when the browser closes or if an admin page is reloaded, and signed-in pages are never cached, so "Back" after signing out shows nothing.
 - **The admin page always asks for the password.** Opening `/admin` (for example from the link on the request form) signs out any existing session first, so nobody can get into the queue from a computer the admin left signed in.
 - **Locked-down pages.** Security headers block the page being framed by other sites or loading scripts from elsewhere, and the app only listens on this computer.
 
@@ -177,6 +178,22 @@ To clear tickets out for good, use **Delete permanently** on a ticket in the Del
 
 Until then, nothing is wiped from the database ("soft delete"). That means every action can be undone, there's a record of who did what, ticket numbers are never reused, and a deleted ticket isn't copied back in from the Excel results when the app restarts. All actions are POST requests protected by the CSRF token, so a link or another website can't trigger them.
 
+**Step 5, done: SLA timers.** Every ticket gets a "resolve by" time from its priority, like the service level agreements real service desks work to:
+
+| Priority | Resolve within |
+|---|---|
+| P1 Critical | 4 hours |
+| P2 High | 8 hours |
+| P3 Medium | 3 days |
+| P4 Low | 5 days |
+
+- Each open ticket shows how long is left ("Due in 2h 15m"). It turns **amber** when under a quarter of the time is left and **red** once it's overdue ("Overdue by 40m").
+- The timers count down live while the page is open, without reloading.
+- An **At risk or overdue** filter and a **Due soonest first** sort show what needs doing next. A P3 due in an hour can matter more than a P2 due tomorrow.
+- Completed tickets record whether they **met** or **missed** their target, and how long they took. The Completed list has a **Missed target** filter.
+
+The targets live in one place (`SLA_HOURS` in `sla.py`). They count clock time, 24 hours a day; a real desk would usually pause the clock for P3 and P4 outside working hours.
+
 **Next step:** let employees email tickets in, using the same database and AI triage.
 
 Flask's built-in server is only for running on your own computer. Online, PythonAnywhere runs the app behind its own web server with HTTPS (see below).
@@ -201,6 +218,16 @@ Extra protections switch on when `.env` contains `PUBLIC_SITE=1`:
 - **A clear demo notice** on every page, so nobody mistakes Brightmoor IT for a real company or enters real personal data.
 
 `pythonanywhere_wsgi.py` shows what goes in PythonAnywhere's WSGI configuration file. Free web apps must be renewed once a month from the Web tab.
+
+## Tests
+
+Automated tests run on GitHub every time the code changes (GitHub Actions):
+
+- `test_priority.py` checks each priority rule, e.g. a whole team that can't work is P1, and a problem with a workaround is P3.
+- `test_corrections.py` gives the checking code made-up AI answers that are wrong, and confirms the rules correct them: a phishing ticket the AI marked P2 is raised to P1, and an "URGENT!!!" sticky key it marked P2 is lowered to P4 and flagged for a person.
+- `test_sla.py` checks the SLA timers with a fixed "now": a P1 with 30 minutes left is at risk, one 45 minutes past its target is overdue, and a completed ticket met or missed its target.
+
+No real AI is called, so the tests are free and take seconds. To run them yourself: `pip install pytest`, then `python -m pytest -v`.
 
 ## Ideas for version 2
 

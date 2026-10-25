@@ -392,6 +392,7 @@ def validate(result):
 
     # The rules decide the priority from the AI's facts.
     facts, fact_problems = read_facts(result)
+    rule = ""
     if not fact_problems:
         priority, rule = decide_priority(facts, category)
         facts_text = ", ".join(FACT_WORDS[name][facts[name]] for name in FACT_WORDS)
@@ -457,6 +458,12 @@ def validate(result):
         "ai_reason": f"{str(result.get('reason', '')).strip()} {priority_reason}".strip(),
         "suggested_fix": suggested_fix,
         "draft_reply": draft_reply,
+        # The facts on their own, so the admin page can show them as tags
+        # (left blank if the AI's facts were unusable)
+        **{name: ("" if fact_problems else facts[name]) for name in FACTS},
+        "enough_info": "" if fact_problems else ("Yes" if facts["enough_info"] else "No"),
+        "ai_priority": ai_priority or "",
+        "priority_rule": rule,          # which rule decided the priority, in plain English
     }
 
 
@@ -569,7 +576,15 @@ def build_summary(results):
         "priority_accuracy": None,
         "priority_too_low": 0,
         "priority_too_high": 0,
+        "rules_raised": 0,          # the rules made it more urgent than the AI's own guess
+        "rules_lowered": 0,         # the rules made it less urgent (these are flagged for a person)
+        "ai_only_accuracy": None,   # how the AI's own guesses would have scored without the rules
+        "corrections_helped": 0,    # the rules changed it and were right (the AI was wrong)
+        "corrections_hurt": 0,      # the rules changed it and were wrong (the AI was right)
     }
+    corrected = [r for r in done if r.get("ai_priority") in PRIORITIES and r["ai_priority"] != r["priority"]]
+    stats["rules_raised"] = sum(r["priority"] < r["ai_priority"] for r in corrected)
+    stats["rules_lowered"] = len(corrected) - stats["rules_raised"]
     if scored:
         stats["category_accuracy"] = sum(r["category_correct"] == "Yes" for r in scored) / len(scored)
         if all("priority_correct" in r for r in scored):
@@ -582,6 +597,15 @@ def build_summary(results):
                         stats["priority_too_low"] += 1
                     else:
                         stats["priority_too_high"] += 1
+            # Were the rules' corrections worth it? Compare with the AI's own guesses.
+            with_guess = [r for r in scored if r.get("ai_priority") in PRIORITIES]
+            if with_guess:
+                stats["ai_only_accuracy"] = (sum(r["ai_priority"] == r["expected_priority"] for r in with_guess)
+                                             / len(with_guess))
+            for r in corrected:
+                if r.get("expected_priority"):
+                    stats["corrections_helped"] += r["priority"] == r["expected_priority"]
+                    stats["corrections_hurt"] += r["ai_priority"] == r["expected_priority"]
     return stats
 
 
@@ -605,6 +629,15 @@ def print_summary(stats, output_path):
             print(f"  Priority: {stats['priority_accuracy']:.0%}")
             print(f"    wrong and too low (not urgent enough): {stats['priority_too_low']}")
             print(f"    wrong and too high (too urgent):       {stats['priority_too_high']}")
+
+    if stats["rules_raised"] or stats["rules_lowered"]:
+        print(f"\nThe rules corrected the AI's own priority on {stats['rules_raised'] + stats['rules_lowered']} tickets:")
+        print(f"  raised (more urgent): {stats['rules_raised']}")
+        print(f"  lowered (less urgent, flagged for a person): {stats['rules_lowered']}")
+        if stats["ai_only_accuracy"] is not None:
+            print(f"  corrections that fixed a mistake: {stats['corrections_helped']}")
+            print(f"  corrections that caused a mistake: {stats['corrections_hurt']}")
+            print(f"  the AI on its own would have scored: {stats['ai_only_accuracy']:.0%}")
 
     print(f"\nSaved to {output_path}")
     print("=" * 50 + "\n")
@@ -668,6 +701,7 @@ PRIORITY_ORDER = {"P1": 1, "P2": 2, "P3": 3, "P4": 4}
 EXCEL_COLUMNS = [
     ("ticket_id",          "Ticket",                          11, "centre"),
     ("priority",           "Priority",                        10, "centre"),
+    ("ai_priority",        "AI's own priority",               12, "centre"),
     ("category",           "Category",                        20, "left"),
     ("issue_summary",      "Issue",                           34, "left"),
     ("suggested_fix",      "Suggested fix (for the analyst)", 52, "left"),
@@ -825,6 +859,13 @@ def save_excel(results, stats, path):
         overview.append(("Priority accuracy", stats["priority_accuracy"], "0%", None))
         overview.append(("Priority too low (not urgent enough)", stats["priority_too_low"], None, None))
         overview.append(("Priority too high (too urgent)", stats["priority_too_high"], None, None))
+    if stats.get("rules_raised") or stats.get("rules_lowered"):
+        overview.append(("Rules raised the AI's priority", stats["rules_raised"], None, None))
+        overview.append(("Rules lowered the AI's priority", stats["rules_lowered"], None, None))
+        if stats.get("ai_only_accuracy") is not None:
+            overview.append(("Corrections that fixed a mistake", stats["corrections_helped"], None, None))
+            overview.append(("Corrections that caused a mistake", stats["corrections_hurt"], None, None))
+            overview.append(("AI on its own would have scored", stats["ai_only_accuracy"], "0%", None))
 
     next_row = small_table(4, ("Overview", "Result"), overview)
     next_row = small_table(next_row, ("Priority", "Tickets"),

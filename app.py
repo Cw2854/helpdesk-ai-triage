@@ -42,8 +42,9 @@ from werkzeug.security import check_password_hash
 
 import tickets_db
 import triage
+from sla import AT_RISK_SHARE, NEEDS_ATTENTION, SLA_HOURS, sla_status, target_words
 # Reuse the triage script's .env reader, priority rules and Excel column names
-from triage import EXCEL_COLUMNS, PRIORITIES, load_env_file
+from triage import EXCEL_COLUMNS, FACT_WORDS, PRIORITIES, load_env_file
 
 BASE_DIR = Path(__file__).resolve().parent   # the project folder
 
@@ -292,7 +293,10 @@ def login():
 def logout():
     check_csrf()
     session.clear()
-    flash("You've signed out.")
+    if request.form.get("reason") == "reload":      # sent by static/admin.js
+        flash("For security, you were signed out because the page was reloaded.")
+    else:
+        flash("You've signed out.")
     return redirect(url_for("login"))
 
 
@@ -309,7 +313,8 @@ def tickets():
     # The priority rules from triage.py, split into ("P1", "Critical", "several users ...")
     priority_key = [(code, *text.split(" - ", 1)) for code, text in PRIORITIES.items()]
 
-    ticket_list = [to_display(row) for row in tickets_db.tickets_in(view)]
+    now = datetime.now()        # the same moment for every ticket's SLA timer
+    ticket_list = [to_display(row, now) for row in tickets_db.tickets_in(view)]
     if view == "open":          # most urgent first
         ticket_list.sort(key=lambda t: (PRIORITY_ORDER.get(t["priority"], 9), t["id"]))
     else:                       # most recently completed / deleted first
@@ -321,6 +326,13 @@ def tickets():
         "tickets.html", user=session["user"], session_minutes=SESSION_MINUTES,
         priority_key=priority_key, tickets=ticket_list, counts=counts,
         review_count=sum(t["needs_review"] for t in ticket_list),
+        second_look_count=sum(t["second_look"] for t in ticket_list),
+        corrected_count=sum(bool(t["correction"]) for t in ticket_list),
+        # Open list: tickets at risk of missing their SLA, or already overdue.
+        # Completed list: tickets that missed it.
+        sla_count=sum(t["sla"]["state"] in NEEDS_ATTENTION for t in ticket_list),
+        sla_targets={code: target_words(code) for code in SLA_HOURS},
+        at_risk_share=AT_RISK_SHARE,
         view=view, view_counts=tickets_db.view_counts(), latest_row=tickets_db.latest_row(),
         undo=session.pop("undo", None),     # shows the "Undo" message once
     )
@@ -582,7 +594,7 @@ def tidy_steps(text):
     return text
 
 
-def to_display(row):
+def to_display(row, now=None):
     def text(field):
         value = row.get(field)
         return "" if value is None else str(value).strip()
@@ -599,6 +611,8 @@ def to_display(row):
         received_label = received
 
     priority = text("priority").upper()
+    # The SLA timer: when it must be resolved by, and how long is left (see sla.py)
+    sla = sla_status(received, priority, now or datetime.now(), text("completed_at"))
     return {
         "id": text("ticket_id"),
         "priority": priority if priority in PRIORITY_ORDER else "",
@@ -627,7 +641,43 @@ def to_display(row):
         "deleted_at": text("deleted_at"),
         "deleted_label": nice_time(text("deleted_at")),
         "deleted_by": text("deleted_by"),
+        "fact_tags": fact_tags(row),
+        "ai_priority": text("ai_priority"),
+        "priority_rule": text("priority_rule"),
+        "correction": correction(text("ai_priority"), priority),
+        # The AI thought it was more urgent than the rules did, so a person should take a second look
+        "second_look": correction(text("ai_priority"), priority) == "lowered",
+        "sla": sla,
+        "sla_target": target_words(priority) if priority in SLA_HOURS else "",
+        "due_label": sla["due"].strftime("%d %b, %H:%M") if sla["due"] else "",
     }
+
+
+def correction(ai_priority, priority):
+    """Did the rules change the AI's own priority? "raised", "lowered", or "" if they agreed
+    (or the ticket is from before the AI gave its own guess)."""
+    if ai_priority not in PRIORITY_ORDER or priority not in PRIORITY_ORDER or ai_priority == priority:
+        return ""
+    return "raised" if PRIORITY_ORDER[priority] < PRIORITY_ORDER[ai_priority] else "lowered"
+
+
+# Facts that push a ticket up the queue get a stronger colour on the admin page
+URGENT_FACTS = {("people_affected", "many"), ("can_work", "no"), ("deadline", "hours"),
+                ("security_risk", "possible"), ("security_risk", "active")}
+
+
+def fact_tags(row):
+    """The AI's facts as short tags, e.g. [("one person", False), ("can't work", True)].
+    The True/False says whether that fact makes the ticket more urgent.
+    Tickets from before the facts existed get an empty list."""
+    tags = []
+    for name, words in FACT_WORDS.items():
+        value = str(row.get(name) or "").strip()
+        if value in words and not (name == "ticket_type" and value == "problem"):
+            tags.append((words[value], (name, value) in URGENT_FACTS))
+    if str(row.get("enough_info") or "") == "No":
+        tags.append(("not enough detail", False))
+    return tags
 
 
 def nice_time(value):

@@ -26,6 +26,9 @@ FIELDS = [
     "review_reason", "ai_reason", "suggested_fix", "draft_reply", "triaged_at", "model",
     "expected_category", "category_correct", "expected_priority", "priority_correct",
     "source", "completed_at", "completed_by", "deleted_at", "deleted_by",
+    # The facts the AI recorded, and its own priority guess (the rules set "priority")
+    "people_affected", "can_work", "deadline", "security_risk", "ticket_type", "enough_info",
+    "ai_priority", "priority_rule",
 ]
 
 # The three lists in the admin queue, and which tickets belong in each.
