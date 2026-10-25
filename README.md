@@ -4,11 +4,7 @@ A Python tool that reads incoming IT support tickets and uses AI to **categorise
 
 Built to show how a 1st line service desk could cut the time spent sorting the queue, without handing decisions over to AI blindly.
 
-https://github.com/user-attachments/assets/32670a83-f153-48ae-92c4-78bdf7866704
-
-<img width="2020" height="1388" alt="overview_1" src="https://github.com/user-attachments/assets/cc853af8-1d49-4f63-b820-eb236fdd2710" />
-
-**Live demo:** [Requests (employee form)](https://YOURUSERNAME.pythonanywhere.com/requests) · [Admin login](https://YOURUSERNAME.pythonanywhere.com/admin)
+**Live demo:** [Requests (employee form)](https://brightmooritdigitaldesk.pythonanywhere.com/requests) · [Admin login](https://brightmooritdigitaldesk.pythonanywhere.com/admin)
 
 **The results table in Excel** (most urgent first, with the issue and suggested fix side by side):
 
@@ -41,7 +37,7 @@ The results open in Excel as a formatted table, sorted with the most urgent tick
 
 | Column | What it means |
 |---|---|
-| Priority | P1 (critical) to P4 (low), colour-coded, using rules written into the prompt |
+| Priority | P1 (critical) to P4 (low), colour-coded. The AI records the facts and fixed rules decide the priority (see below) |
 | Category | One of 11 service desk categories (Password / Account Lockout, Access Request, Hardware, Mobile Device, …) |
 | Issue | A one-line summary of the problem |
 | Suggested fix | 2–4 numbered steps for the 1st line analyst, including when to escalate |
@@ -53,10 +49,22 @@ A **Summary** sheet shows totals by priority and category. If the input file inc
 
 ## Results
 
-On 17 test tickets, the model got the category right 88% of the time and the priority right 53% of the time. It flagged 5 tickets for human review, including the phishing incident and the vague 'not working again' ticket.
+Tested on 50 hand-labelled tickets (`test_tickets_50.csv`), the same set before and after each change:
+
+| | Before | After the facts + rules change |
+|---|---|---|
+| Category accuracy | 90% | 92% |
+| Priority accuracy | 76% | **86%** |
+| Priority too low (not urgent enough) | 10 | **2** |
+| Priority too high (more urgent than needed) | 2 | 5 |
+
+The AI was good at working out what a ticket was about but too relaxed about urgency, which is the dangerous direction on a service desk. For example, someone who had typed their password into a fake login page was marked P2 instead of P1. Letting the AI record the facts and fixed rules decide the priority cut "too low" mistakes by 80%. The trade-off is a few more tickets marked more urgent than needed, which is the safer way to be wrong.
+
+(An earlier version scored 88% on category and 53% on priority across the original 17 sample tickets.)
 
 ## Design decisions
 
+- **The AI gathers the facts; rules decide the priority.** The AI was good at understanding tickets but too relaxed about urgency. Now it records the facts (how many people are affected, whether they can work, any deadline, any security risk) and `decide_priority()` turns them into P1–P4 using the ITIL impact × urgency approach. Every priority can be explained, and if the AI itself thought a ticket was more urgent than the rules did, it's flagged for a person.
 - **Human in the loop.** P1s, security incidents and anything below 70% confidence are always flagged for a person to check. The AI drafts and a human decides.
 - **Never trust the AI's output blindly.** Every answer is checked: the category must come from the approved list, the priority must be P1–P4, and replies that ask for a password are flagged.
 - **Prompt-injection aware.** Ticket text is treated as data, not instructions. Sample ticket INC-1015 deliberately tries to trick the AI into marking a sticky mouse wheel as P1.
@@ -81,7 +89,7 @@ pip install -r requirements.txt
 3. Run:
    ```
    python triage.py --limit 3     # quick test on 3 tickets
-   python triage.py               # all sample tickets
+   python triage.py               # the 50-ticket test set (test_tickets_50.csv)
    ```
 
 **Option B – Ollama (free, runs on your own computer)**
@@ -92,7 +100,9 @@ pip install -r requirements.txt
 
 > On Mac, use `python3` instead of `python`.
 
-Results are saved to `triaged_tickets.xlsx` and open automatically. Add `--no-open` to skip that, or `-o results.csv` to save a CSV instead.
+Results are saved to a dated file such as `test_results_2026-10-25_0916.xlsx` and open automatically, so every run is kept and you can compare accuracy before and after a change. Add `--no-open` to skip opening it, or `-o results.csv` to save a CSV instead. The summary shows category and priority accuracy, and whether wrong priorities were too low (not urgent enough) or too high.
+
+To load the original sample tickets into the web app's queue, run `python triage.py sample_tickets.csv -o triaged_tickets.xlsx`.
 
 ## Using your own tickets
 
@@ -113,7 +123,8 @@ A small web app where the service desk admin signs in to see the ticket queue, b
 - **Passwords are never stored.** `set_password.py` saves only a salted hash, so even someone reading the settings file can't see the password.
 - **Account lockout.** 5 wrong attempts locks sign-in for 5 minutes, like a real lockout policy.
 - **CSRF protection.** Every form carries a secret token, so another website can't submit it on the admin's behalf.
-- **Session safety.** The sign-in cookie can't be read by page scripts, the admin is signed out after 30 minutes without activity, and signed-in pages are never cached, so "Back" after signing out shows nothing.
+- **Session safety.** The sign-in cookie can't be read by page scripts, the admin is signed out after 30 minutes without activity or when the browser closes, and signed-in pages are never cached, so "Back" after signing out shows nothing.
+- **The admin page always asks for the password.** Opening `/admin` (for example from the link on the request form) signs out any existing session first, so nobody can get into the queue from a computer the admin left signed in.
 - **Locked-down pages.** Security headers block the page being framed by other sites or loading scripts from elsewhere, and the app only listens on this computer.
 
 Friendly touches: show/hide password, a Caps Lock warning, a "Signing in…" state and a live lockout countdown.
@@ -171,7 +182,7 @@ Flask's built-in server is only for running on your own computer. Online, Python
 
 ## Putting it online (free, on PythonAnywhere)
 
-The portal runs online on a free PythonAnywhere account, at `https://YOURUSERNAME.pythonanywhere.com`:
+The portal runs online on a free PythonAnywhere account, at `https://brightmooritdigitaldesk.pythonanywhere.com`:
 
 | Address | Page |
 |---|---|
