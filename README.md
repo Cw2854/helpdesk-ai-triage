@@ -122,6 +122,7 @@ A small web app where the service desk admin signs in to see the ticket queue, b
 
 - **Passwords are never stored.** `set_password.py` saves only a salted hash, so even someone reading the settings file can't see the password.
 - **Account lockout.** 5 wrong attempts locks sign-in for 5 minutes, like a real lockout policy.
+- **Usernames ignore capitals, passwords don't.** "Admin" and "admin" are the same user, like Windows and Active Directory logins, but the password must match exactly.
 - **CSRF protection.** Every form carries a secret token, so another website can't submit it on the admin's behalf.
 - **Session safety.** The sign-in cookie can't be read by page scripts, the admin is signed out after 30 minutes without activity or when the browser closes, and signed-in pages are never cached, so "Back" after signing out shows nothing.
 - **The admin page always asks for the password.** Opening `/admin` (for example from the link on the request form) signs out any existing session first, so nobody can get into the queue from a computer the admin left signed in.

@@ -85,7 +85,8 @@ app.config.update(
     SECRET_KEY=SECRET_KEY,                  # signs the session cookie so it can't be faked
     SESSION_COOKIE_HTTPONLY=True,           # page scripts can't read the cookie
     SESSION_COOKIE_SAMESITE="Lax",          # cookie isn't sent with other sites' form posts
-    PERMANENT_SESSION_LIFETIME=timedelta(hours=8),   # the 30-minute inactivity check is below
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=8),   # not used: the sign-in ends when the browser closes,
+                                                     # and the 30-minute inactivity check is below
     SESSION_COOKIE_SECURE=PUBLIC_SITE,      # online, the cookie is only ever sent over HTTPS
 )
 
@@ -183,9 +184,11 @@ def login_required(view):
 
 
 def credentials_ok(username, password):
+    # The username ignores capitals ("Admin", "admin" and "ADMIN" are the same), like Windows
+    # and Active Directory logins. The password is still case-sensitive.
     # compare_digest takes the same time whether the first letter or the last is wrong,
     # so attackers can't guess the username by timing the response.
-    name_ok = hmac.compare_digest(username.encode(), ADMIN_USERNAME.encode())
+    name_ok = hmac.compare_digest(username.casefold().encode(), ADMIN_USERNAME.casefold().encode())
     password_ok = check_password_hash(ADMIN_PASSWORD_HASH, password)   # always run both checks
     return name_ok and password_ok
 
@@ -243,8 +246,12 @@ def old_report():
 
 @app.route("/admin", methods=["GET", "POST"])
 def login():
-    if signed_in():
-        return redirect(url_for("tickets"))
+    # Opening the admin page always asks for the username and password, even if this browser
+    # was already signed in. So if the admin leaves a computer signed in, someone else can't
+    # get into the ticket queue just by clicking the admin link on the request form.
+    if request.method == "GET" and signed_in(count_as_activity=False):
+        session.clear()
+        flash("For security, you've been signed out. Sign in again to open the ticket queue.")
 
     ip = client_ip()
     locked_for = seconds_locked(ip)
@@ -264,7 +271,7 @@ def login():
             session.clear()                 # fresh session on sign-in
             session["user"] = username
             session["last_active"] = time.time()
-            session.permanent = True
+            session.permanent = False       # the sign-in ends when the browser is closed
             return redirect(url_for("tickets"))
         else:
             attempts_left = record_failure(ip)
