@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ company_name }} {{ portal_name }} - Requests{% endblock %}
+{% block body_class %}app{% endblock %}
+
+{% block content %}
+<header class="topbar">
+  {% include "_brand.html" %}
+</header>
+
+<main class="workspace form-page">
+  <h1>Report an IT problem</h1>
+  <p class="lede">Tell us what's wrong and the service desk will pick it up. You'll get a ticket number straight away.</p>
+  <p class="demo-banner">This is a demo. {{ company_name }} is a made-up company, so please don't enter real personal or company information.</p>
+
+  {% if notice %}
+    <p class="alert" role="alert">{{ notice }}</p>
+  {% elif problems %}
+    <p class="alert" role="alert">Some details need fixing before this can be sent. They're marked below.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('report') }}" class="report-form" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {# Spam trap: hidden from people, but spam bots fill it in #}
+    <div class="trap" aria-hidden="true">
+      <label for="website">Leave this empty</label>
+      <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+    </div>
+
+    <div class="field-pair">
+      <div class="field{% if problems.name %} has-problem{% endif %}">
+        <label for="name">Your name</label>
+        <input id="name" name="name" type="text" autocomplete="name" maxlength="80" required
+               value="{{ form.name }}" {% if problems.name %}aria-invalid="true" aria-describedby="name-problem"{% endif %}>
+        {% if problems.name %}<p class="field-problem" id="name-problem">{{ problems.name }}</p>{% endif %}
+      </div>
+
+      <div class="field{% if problems.email %} has-problem{% endif %}">
+        <label for="email">Work email</label>
+        <input id="email" name="email" type="email" autocomplete="email" maxlength="120" required
+               value="{{ form.email }}" {% if problems.email %}aria-invalid="true" aria-describedby="email-problem"{% endif %}>
+        {% if problems.email %}<p class="field-problem" id="email-problem">{{ problems.email }}</p>{% endif %}
+      </div>
+    </div>
+
+    <div class="field{% if problems.subject %} has-problem{% endif %}">
+      <label for="subject">What's the problem?</label>
+      <p class="field-hint" id="subject-hint">A short title, like "Laptop won't turn on" or "Can't open the shared drive".</p>
+      <input id="subject" name="subject" type="text" maxlength="120" required value="{{ form.subject }}"
+             aria-describedby="subject-hint{% if problems.subject %} subject-problem{% endif %}"
+             {% if problems.subject %}aria-invalid="true"{% endif %}>
+      {% if problems.subject %}<p class="field-problem" id="subject-problem">{{ problems.subject }}</p>{% endif %}
+    </div>
+
+    <div class="field{% if problems.details %} has-problem{% endif %}">
+      <label for="details">Details</label>
+      <p class="field-hint" id="details-hint">What happened, when it started, how many people it affects, and whether you can still work.</p>
+      <textarea id="details" name="details" rows="7" maxlength="4000" required
+                aria-describedby="details-hint{% if problems.details %} details-problem{% endif %}"
+                {% if problems.details %}aria-invalid="true"{% endif %}>{{ form.details }}</textarea>
+      {% if problems.details %}<p class="field-problem" id="details-problem">{{ problems.details }}</p>{% endif %}
+    </div>
+
+    <p class="security-note">Never include a password in a ticket. The service desk will never ask for it.</p>
+
+    <button type="submit" class="submit">Send to the service desk</button>
+  </form>
+
+  <p class="footnote">Service desk admin? <a href="{{ url_for('login') }}">Sign in to the ticket queue</a></p>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='report.js') }}"></script>
+{% endblock %}

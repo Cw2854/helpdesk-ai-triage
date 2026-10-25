@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}{{ company_name }} {{ portal_name }} - Admin Manager{% endblock %}
+{% block body_class %}app{% endblock %}
+
+{% block content %}
+{% include "_admin_topbar.html" %}
+
+<main class="workspace wide" id="queue"
+      data-latest="{{ latest_row }}" data-check-url="{{ url_for('new_tickets') }}">
+  <div class="page-head">
+    <h1>Ticket queue</h1>
+    {% if tickets %}
+      <p class="source">
+        {{ tickets|length }} {{ 'ticket' if tickets|length == 1 else 'tickets' }}
+        <a class="download" href="{{ url_for('export_tickets', view=view) }}">Download as Excel</a>
+        {% if view == 'deleted' %}
+          <a class="download danger-link" href="{{ url_for('empty_deleted_route') }}">Empty the Deleted list</a>
+        {% endif %}
+      </p>
+    {% endif %}
+  </div>
+
+  {# The three lists: Open, Completed and Deleted #}
+  <nav class="views" aria-label="Ticket lists">
+    {% for key, label in [('open', 'Open'), ('completed', 'Completed'), ('deleted', 'Deleted')] %}
+      <a href="{{ url_for('tickets', view=key) }}" class="view-tab{% if key == view %} current{% endif %}"
+         {% if key == view %}aria-current="page"{% endif %}>
+        {{ label }} <span class="view-count">{{ view_counts[key] }}</span>
+      </a>
+    {% endfor %}
+  </nav>
+
+  {% for message in get_flashed_messages() %}
+    <p class="notice" role="status">{{ message }}</p>
+  {% endfor %}
+
+  {% if undo %}
+    <div class="notice undo-notice" role="status">
+      <span>{{ undo.id }} {{ 'deleted' if undo.action == 'deleted' else 'marked as completed' }}.</span>
+      <form method="post" action="{{ url_for('restore_route' if undo.action == 'deleted' else 'reopen_route', ticket_id=undo.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="view" value="{{ view }}">
+        <button type="submit" class="text-button">Undo</button>
+      </form>
+    </div>
+  {% endif %}
+
+  {# Shown by tickets.js when someone sends a new ticket while this page is open #}
+  <p class="notice new-tickets" id="new-tickets" role="status" hidden>
+    <span class="new-count">New tickets have</span> arrived.
+    <a href="{{ url_for('tickets', view='open') }}">{{ 'Refresh the page' if view == 'open' else 'Go to the Open list' }}</a>
+  </p>
+
+  {% if not tickets %}
+    <section class="empty">
+      {% if view == 'completed' %}
+        <h2>No completed tickets</h2>
+        <p>When you finish with a ticket, open it and choose <strong>Mark as completed</strong>. It moves here, and you can reopen it at any time.</p>
+      {% elif view == 'deleted' %}
+        <h2>Nothing deleted</h2>
+        <p>Deleted tickets stay here so you can restore them if you deleted one by mistake.</p>
+      {% else %}
+        <h2>No open tickets</h2>
+        <p>Tickets appear here when an employee sends one through the <a href="{{ url_for('report') }}">Report a problem</a> form, or when you run <code>python triage.py</code> and restart the app.</p>
+      {% endif %}
+    </section>
+
+  {% else %}
+    {# Filters: hidden until JavaScript is running, because they need it to work #}
+    <div class="toolbar" id="toolbar" hidden>
+      <div class="filter-group" role="group" aria-label="Show priorities">
+        {% for code in counts %}
+          <button type="button" class="filter {{ code|lower }}" data-priority="{{ code }}" aria-pressed="false">
+            <span class="chip">{{ code }}</span> {{ counts[code] }}
+          </button>
+        {% endfor %}
+        <button type="button" class="filter review-filter" id="review-filter" aria-pressed="false">
+          Needs review {{ review_count }}
+        </button>
+      </div>
+
+      <div class="controls">
+        <label class="visually-hidden" for="search">Search tickets</label>
+        <input type="search" id="search" placeholder="Search tickets" autocomplete="off">
+
+        <label class="visually-hidden" for="sort">Sort tickets</label>
+        <select id="sort">
+          <option value="urgent">{{ {'open': 'Most urgent first', 'completed': 'Recently completed first', 'deleted': 'Recently deleted first'}[view] }}</option>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+      </div>
+    </div>
+
+    {# Page buttons: 10 tickets per page (set PAGE_SIZE in static/tickets.js) #}
+    <nav class="pager" id="pager" aria-label="Ticket pages" hidden>
+      <button type="button" class="pager-button" id="prev-page">Previous</button>
+      <span class="page-label" id="page-label"></span>
+      <button type="button" class="pager-button" id="next-page">Next</button>
+    </nav>
+
+    <p class="showing" id="showing" aria-live="polite" hidden></p>
+
+    <ul class="ticket-list" id="ticket-list">
+      {% for t in tickets %}
+      <li class="ticket {{ t.priority|lower or 'no-priority' }}"
+          data-priority="{{ t.priority }}"
+          data-review="{{ 'yes' if t.needs_review else 'no' }}"
+          data-received="{{ t.received }}"
+          data-order="{{ loop.index }}"
+          data-search="{{ [t.id, t.issue, t.subject, t.category, t.from_name, t.message]|join(' ')|lower }}">
+        <details>
+          <summary>
+            <span class="chip">{{ t.priority or 'Error' }}</span>
+            <span class="ticket-id">{{ t.id }}</span>
+            <span class="ticket-issue">{{ t.issue }}</span>
+            <span class="ticket-category">{{ t.category }}</span>
+            <span class="ticket-from">{{ t.from_name }}</span>
+            <span class="ticket-time">{{ t.received_label }}</span>
+            <span class="ticket-flag">{% if t.needs_review %}<span class="review-badge">Needs review</span>{% endif %}</span>
+          </summary>
+
+          <div class="ticket-detail">
+            <div class="detail-main">
+              <section>
+                <h3>Suggested fix</h3>
+                <p class="keep-lines">{{ t.suggested_fix or 'No suggested fix.' }}</p>
+              </section>
+              <section>
+                <h3>Draft reply to {{ t.from_name or 'the user' }}</h3>
+                <p class="keep-lines reply">{{ t.draft_reply or 'No draft reply.' }}</p>
+              </section>
+            </div>
+
+            <div class="detail-side">
+              <section>
+                <h3>Original message</h3>
+                <p class="subject">{{ t.subject }}</p>
+                <p class="keep-lines">{{ t.message }}</p>
+                <dl class="facts compact">
+                  <dt>From</dt><dd>{{ t.from_name }}{% if t.from_email %}, {{ t.from_email }}{% endif %}</dd>
+                  {% if t.source %}<dt>Came in via</dt><dd>{{ t.source }}</dd>{% endif %}
+                </dl>
+              </section>
+              <section>
+                <h3>The AI's view</h3>
+                <dl class="facts">
+                  {% if t.confidence %}<dt>Confidence</dt><dd>{{ t.confidence }}</dd>{% endif %}
+                  {% if t.ai_reason %}<dt>Reasoning</dt><dd>{{ t.ai_reason }}</dd>{% endif %}
+                  {% if t.review_reason %}<dt>Why it was flagged</dt><dd>{{ t.review_reason[:1]|upper }}{{ t.review_reason[1:] }}</dd>{% endif %}
+                </dl>
+              </section>
+              {% if t.expected_category or t.expected_priority %}
+              <section>
+                <h3>Against the expected answer</h3>
+                <dl class="facts">
+                  <dt>Category</dt>
+                  <dd>Expected {{ t.expected_category }}
+                    <span class="verdict {{ 'right' if t.category_correct == 'Yes' else 'wrong' }}">{{ 'Right' if t.category_correct == 'Yes' else 'Wrong' }}</span></dd>
+                  <dt>Priority</dt>
+                  <dd>Expected {{ t.expected_priority }}
+                    <span class="verdict {{ 'right' if t.priority_correct == 'Yes' else 'wrong' }}">{{ 'Right' if t.priority_correct == 'Yes' else 'Wrong' }}</span></dd>
+                </dl>
+              </section>
+              {% endif %}
+            </div>
+
+            {# What the admin can do with this ticket depends on which list it's in #}
+            <div class="ticket-actions">
+              {% if view == 'completed' %}
+                <p class="action-note">Completed {{ t.completed_label }}{% if t.completed_by %} by {{ t.completed_by }}{% endif %}</p>
+              {% elif view == 'deleted' %}
+                <p class="action-note">Deleted {{ t.deleted_label }}{% if t.deleted_by %} by {{ t.deleted_by }}{% endif %}</p>
+              {% endif %}
+
+              {% set actions = {
+                   'open': [('complete_route', 'Mark as completed', 'primary-button'), ('delete_route', 'Delete ticket', 'danger-button')],
+                   'completed': [('reopen_route', 'Reopen', 'secondary-button'), ('delete_route', 'Delete ticket', 'danger-button')],
+                   'deleted': [('restore_route', 'Restore ticket', 'primary-button')],
+                 }[view] %}
+              {% for route, label, style in actions %}
+                <form method="post" action="{{ url_for(route, ticket_id=t.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="view" value="{{ view }}">
+                  <button type="submit" class="{{ style }}" aria-label="{{ label }}: {{ t.id }}">{{ label }}</button>
+                </form>
+              {% endfor %}
+              {% if view == 'deleted' %}
+                {# A link, not a button: it opens an "are you sure?" page first #}
+                <a class="danger-button" href="{{ url_for('purge_route', ticket_id=t.id) }}"
+                   aria-label="Delete permanently: {{ t.id }}">Delete permanently</a>
+              {% endif %}
+            </div>
+          </div>
+        </details>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <div class="no-match" id="no-match" hidden>
+      <p>No tickets match these filters.</p>
+      <button type="button" class="text-button" id="clear-filters">Clear filters</button>
+    </div>
+  {% endif %}
+
+  <details class="priority-key">
+    <summary>How tickets are prioritised</summary>
+    <dl>
+      {% for code, name, meaning in priority_key %}
+        <div class="key-row {{ code|lower }}">
+          <dt><span class="chip">{{ code }}</span> {{ name }}</dt>
+          <dd>{{ meaning[:1]|upper }}{{ meaning[1:] }}</dd>
+        </div>
+      {% endfor %}
+    </dl>
+  </details>
+
+  <p class="footnote">For security, you'll be signed out after {{ session_minutes }} minutes without activity.</p>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='tickets.js') }}"></script>
+{% endblock %}

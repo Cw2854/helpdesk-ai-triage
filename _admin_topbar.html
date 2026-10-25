@@ -1,0 +1,11 @@
+{# The top bar on every signed-in page: logo, who's signed in, and Sign out #}
+<header class="topbar">
+  {% include "_brand.html" %}
+  <div class="account">
+    <span>Signed in as <strong>{{ user }}</strong></span>
+    <form method="post" action="{{ url_for('logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="signout">Sign out</button>
+    </form>
+  </div>
+</header>

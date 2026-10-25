@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ company_name }} - Admin Login{% endblock %}
+
+{% block content %}
+<main class="signin">
+
+  {# Left: the queue, with every ticket redacted until you sign in #}
+  <section class="queue">
+    {% include "_brand.html" %}
+
+    <ol class="redacted" aria-hidden="true">
+      <li class="p1"><span class="chip">P1</span><span class="bar w-85"></span></li>
+      <li class="p2"><span class="chip">P2</span><span class="bar w-60"></span></li>
+      <li class="p2"><span class="chip">P2</span><span class="bar w-75"></span></li>
+      <li class="p3"><span class="chip">P3</span><span class="bar w-50"></span></li>
+      <li class="p3"><span class="chip">P3</span><span class="bar w-70"></span></li>
+      <li class="p4"><span class="chip">P4</span><span class="bar w-40"></span></li>
+    </ol>
+
+    <p class="queue-note">Ticket details stay hidden until you sign in.</p>
+  </section>
+
+  {# Right: the sign-in form #}
+  <section class="panel">
+    <div class="panel-inner">
+      <h1>Admin login</h1>
+      <p class="lede">Sign in to manage the ticket queue. Only the service desk admin can see tickets.</p>
+
+      {% for message in get_flashed_messages() %}
+        <p class="notice" role="status">{{ message }}</p>
+      {% endfor %}
+
+      {% if locked_for %}
+        <p class="alert" id="lockout" role="alert" data-seconds="{{ locked_for }}">
+          Too many wrong attempts. Sign-in is locked for
+          <span class="countdown" aria-hidden="true">{{ '%d:%02d' % (locked_for // 60, locked_for % 60) }}</span><span class="visually-hidden">{{ (locked_for + 59) // 60 }} minutes</span>.
+        </p>
+      {% elif error %}
+        <p class="alert" id="form-error" role="alert">{{ error }}</p>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('login') }}" class="signin-form{% if error %} has-error{% endif %}" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username"
+               autocapitalize="none" spellcheck="false" required value="{{ username }}"
+               {% if not username %}autofocus{% endif %}>
+
+        <label for="password">Password</label>
+        <div class="password-wrap">
+          <input id="password" name="password" type="password" autocomplete="current-password"
+                 required {% if username %}autofocus{% endif %}>
+          <button type="button" class="reveal" aria-controls="password" aria-pressed="false" hidden>Show</button>
+        </div>
+        <p class="hint caps" id="caps-warning" aria-live="polite" hidden>Caps Lock is on.</p>
+        <p class="hint missing" id="missing" aria-live="polite" hidden>Enter your username and password.</p>
+
+        <button type="submit" class="submit" {% if locked_for %}disabled{% endif %}>Sign in</button>
+      </form>
+
+      <p class="footnote">You'll be signed out after 30 minutes without activity.</p>
+      <p class="footnote">Not the admin? <a href="{{ url_for('report') }}">Report an IT problem</a></p>
+      <p class="footnote demo-note">A demo portfolio project by {{ author_name }}. {{ company_name }} is a made-up company. <a href="{{ project_url }}">See the code</a></p>
+    </div>
+  </section>
+
+</main>
+{% endblock %}
+
+{% block footer %}{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='login.js') }}"></script>
+{% endblock %}

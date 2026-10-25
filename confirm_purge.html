@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ company_name }} {{ portal_name }} - Admin Manager{% endblock %}
+{% block body_class %}app{% endblock %}
+
+{% block content %}
+{% include "_admin_topbar.html" %}
+
+<main class="workspace narrow">
+  {% if everything %}
+    <h1>Permanently delete {{ tickets|length }} {{ 'ticket' if tickets|length == 1 else 'tickets' }}?</h1>
+  {% else %}
+    <h1>Permanently delete {{ tickets[0].id }}?</h1>
+  {% endif %}
+
+  <p class="alert" role="alert">This can't be undone. The {{ 'ticket' if tickets|length == 1 else 'tickets' }} and everything in {{ 'it' if tickets|length == 1 else 'them' }}, including names, emails and messages, will be removed from the database for good.</p>
+
+  <ul class="purge-list">
+    {% for t in tickets[:10] %}
+      <li><strong>{{ t.id }}</strong> {{ t.issue }}{% if t.from_name %} <span class="purge-from">from {{ t.from_name }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% if tickets|length > 10 %}
+    <p class="purge-more">and {{ tickets|length - 10 }} more.</p>
+  {% endif %}
+
+  <form method="post" class="purge-actions"
+        action="{{ url_for('empty_deleted_route') if everything else url_for('purge_route', ticket_id=tickets[0].id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for t in tickets %}<input type="hidden" name="ticket_id" value="{{ t.id }}">{% endfor %}
+    <button type="submit" class="danger-solid">Delete permanently</button>
+    <a href="{{ url_for('tickets', view='deleted') }}">Cancel and go back</a>
+  </form>
+</main>
+{% endblock %}
